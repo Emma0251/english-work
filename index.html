@@ -389,6 +389,18 @@
   .qopt:active{border-color:var(--pink);background:var(--pink2);}
   .try.recding{background:#FFB3B3 !important;color:#fff !important;animation:pulse 1s infinite;}
   @keyframes pulse{0%{opacity:1;}50%{opacity:.6;}100%{opacity:1;}}
+  /* 提醒 / 補回 橫幅 */
+  .cbanner{margin-bottom:14px;padding:12px 14px;border-radius:16px;background:linear-gradient(135deg,#E7F0FB,#EDE7FB);font-size:13px;font-weight:700;color:#4A6DB5;text-align:left;cursor:pointer;}
+  .rbanner{margin-bottom:14px;padding:12px 14px;border-radius:16px;background:linear-gradient(135deg,#FFF3D6,#FFE3EC);font-size:13px;font-weight:700;color:#B5742E;text-align:left;}
+  /* 深色模式 · 橫幅拋光 */
+  [data-theme="dark"] .cbanner{background:linear-gradient(135deg,#2A3040,#2E2A3A);color:#9DB8E8;}
+  [data-theme="dark"] .rbanner{background:linear-gradient(135deg,#3A2F1E,#3A2433);color:#E0B870;}
+  [data-theme="dark"] .lazy{background:linear-gradient(135deg,#2E2430,#332A1E) !important;color:#E0A8B8 !important;}
+  [data-theme="dark"] .checkin{background:linear-gradient(135deg,#2E2430,#2A2E36);box-shadow:var(--shadow2);}
+  [data-theme="dark"] .vext,[data-theme="dark"] .assess,[data-theme="dark"] .stage.active{background:linear-gradient(135deg,#24202A,#2A2430) !important;}
+  [data-theme="dark"] .vext .vopen{background:linear-gradient(135deg,#3A2F1E,#3A2433) !important;color:#E0B870 !important;}
+  [data-theme="dark"] .vthumb,[data-theme="dark"] .vframe-wrap{background:linear-gradient(135deg,#2A2430 0%,#242A38 52%,#2E2A1E 100%) !important;}
+  [data-theme="dark"] .aopt.no{background:#2A2024 !important;}
 </style>
 </head>
 <body>
@@ -532,6 +544,7 @@
     <div class="row" style="margin-top:8px;">
       <button class="btn-pink" style="width:100%;" onclick="startReview()">📝 溫習（生字＋我加嘅嘢 · 間隔重複）</button>
       <button class="btn-blue" style="width:100%;margin-top:8px;" onclick="startQuiz()">📝 小測（考你記得幾多 · retention）</button>
+      <button class="btn-yellow" style="width:100%;margin-top:8px;" onclick="startWeekReview()">📅 週回顧（近 7 日 recap · 整合知識）</button>
     </div>
     <div class="mtip">你學過嘅生字、地道句、俚語會自動收集喺度，變成屬於你嘅手冊✨</div>
     <div class="addform">
@@ -607,7 +620,9 @@ const K = {
   custom:'wb_shinchan_custom',
   lastSeen:'wb_shinchan_lastseen',
   catchup:'wb_shinchan_catchup',
-  quiz:'wb_shinchan_quiz'
+  quiz:'wb_shinchan_quiz',
+  quizRecent:'wb_shinchan_quizrecent',
+  weekReview:'wb_shinchan_weekreview'
 };
 function load(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }
 function save(k,v){ localStorage.setItem(k,JSON.stringify(v)); markSaved(); }
@@ -1004,32 +1019,82 @@ const CATEGORIES = [
   {id:'slang',name:'英式俚語'},
   {id:'connector',name:'連接詞'}
 ];
+/* 每日主題（成課）：用 daySeed 揀一個主題，字/句/聽力盡量對齊同一主題 */
+const THEME_LABELS={greet:'打招呼',shopping:'買嘢',friend:'朋友',chat:'閒聊',phone:'電話',polite:'禮貌',feeling:'表達感受',slang:'地道俚語',connector:'連接詞'};
+const THEME_KEYS=Object.keys(THEME_LABELS);
+function dailyTheme(dateStr){
+  const seed=daySeed(dateStr);
+  const key=THEME_KEYS[seed%THEME_KEYS.length];
+  return {key, label:THEME_LABELS[key]};
+}
 
 const LISTEN_POOL = [
-  {role:'咖啡店點餐 · A1 慢速', sentences:[
+  {theme:'shopping', role:'咖啡店點餐 · A1 慢速', sentences:[
     {en:'Hello!',zh:'你好！'},
     {en:'A flat white, please.',zh:'唔該，一杯 flat white。'},
     {en:'Oh, cheers mate.',zh:'哦，多謝晒老友。'},
     {en:'Just by the window, yeah?',zh:'擺喺窗邊就得，係呀？'},
     {en:'Lovely, thanks a lot!',zh:'好正，多謝晒！'}
   ]},
-  {role:'街市買餸 · A2 正常', sentences:[
+  {theme:'shopping', role:'街市買餸 · A2 正常', sentences:[
     {en:'Morning!',zh:'早晨！'},
     {en:'Two of those, please.',zh:'唔該，要兩個。'},
     {en:'How much is it?',zh:'幾錢呀？'},
     {en:'Cheers, that’s brilliant.',zh:'多謝，好正。'},
     {en:'See you tomorrow!',zh:'聽日見！'}
   ]},
-  {role:'朋友閒聊 · B1 自然', sentences:[
+  {theme:'friend', role:'朋友閒聊 · B1 自然', sentences:[
     {en:'You alright?',zh:'你好呀？'},
     {en:'Fancy a brew later?',zh:'遲啲想唔想飲杯茶？'},
     {en:'I’m absolutely knackered today, honestly.',zh:'講真，今日我真係攰到散。'},
     {en:'Let’s sort it out tomorrow.',zh:'聽日先搞掂佢啦。'}
   ]},
-  {role:'朋友傾偈 · B2 流利', sentences:[
+  {theme:'friend', role:'朋友傾偈 · B2 流利', sentences:[
     {en:'So basically, my mate was proper gutted we missed the meet-up.',zh:'大致上，我個 friend 真係好唔開心我哋錯過咗聚會。'},
     {en:'But it’s all sorted now, innit.',zh:'但而家搞掂晒啦，係咪。'},
     {en:'Fancy a pint later?',zh:'遲啲去飲杯啤酒呀？'}
+  ]},
+  {theme:'greet', role:'街頭打招呼 · A1 慢速', sentences:[
+    {en:'Alright, mate?',zh:'喂，點呀老友？'},
+    {en:'Not too bad, you?',zh:'唔錯，你呢？'},
+    {en:'Yeah, I’m good, cheers.',zh:'幾好，多謝。'},
+    {en:'See you around!',zh:'遲啲見！'}
+  ]},
+  {theme:'phone', role:'電話對話 · A2 正常', sentences:[
+    {en:'Hi, is that Sarah?',zh:'喂，係咪 Sarah 呀？'},
+    {en:'Speaking, how can I help?',zh:'係我，有咩幫到你？'},
+    {en:'Just ringing about tomorrow.',zh:'打嚟係想講聽日嘅事。'},
+    {en:'No worries, see you then.',zh:'冇問題，到時見。'}
+  ]},
+  {theme:'polite', role:'禮貌用語 · A1 慢速', sentences:[
+    {en:'Excuse me, could you help?',zh:'唔好意思，可唔可以幫我？'},
+    {en:'Of course, what do you need?',zh:'當然，你需要啲咩？'},
+    {en:'That’s very kind, thank you.',zh:'你真係好人，多謝你。'},
+    {en:'My pleasure, anytime.',zh:'唔客氣，隨時。'}
+  ]},
+  {theme:'feeling', role:'表達感受 · B1 自然', sentences:[
+    {en:'I’m absolutely gutted about it.',zh:'我對呢件事好失望。'},
+    {en:'Don’t be, it’s not your fault.',zh:'唔好咁啦，唔係你錯。'},
+    {en:'Still, I feel proper bad.',zh:'我都係覺得好唔安樂。'},
+    {en:'Give it time, mate.',zh:'畀啲時間啦，老友。'}
+  ]},
+  {theme:'slang', role:'地道俚語 · B2 流利', sentences:[
+    {en:'He’s always taking the mickey.',zh:'佢成日攞人開玩笑。'},
+    {en:'Proper wind-up, that one.',zh:'嗰個真係激死人。'},
+    {en:'Tell him to pack it in.',zh:'叫佢收聲啦。'},
+    {en:'Yeah, he’s a bit much sometimes.',zh:'係，佢有時真係太過份。'}
+  ]},
+  {theme:'chat', role:'閒聊近況 · A2 正常', sentences:[
+    {en:'How’s things?',zh:'近排點呀？'},
+    {en:'Not bad, keeping busy.',zh:'唔錯，keep住忙。'},
+    {en:'Fancy a catch-up soon?',zh:'遲啲想唔想聚下？'},
+    {en:'Yeah, let’s sort something.',zh:'好，搞返個時間。'}
+  ]},
+  {theme:'connector', role:'連接詞練習 · B1 自然', sentences:[
+    {en:'So basically, I missed the bus.',zh:'所以大致上，我錯過咗巴士。'},
+    {en:'Even so, I made it on time.',zh:'即使咁，我都準時到咗。'},
+    {en:'Anyway, it all worked out.',zh:'總之，最後搞掂咗。'},
+    {en:'To be fair, it was lucky.',zh:'講真，都算好彩。'}
   ]}
 ];
 
@@ -1276,14 +1341,27 @@ function saveWord(en,zh,exEn,exZh,lv){
 
 function phraseItems(dateStr){
   const seed=daySeed(dateStr);
-  let i1=seed%PHRASE_POOL.length, i2=(seed+7)%PHRASE_POOL.length;
-  if(i1===i2) i2=(i1+1)%PHRASE_POOL.length;
-  return [PHRASE_POOL[i1],PHRASE_POOL[i2]];
+  const th=dailyTheme(dateStr);
+  const sameCat=PHRASE_POOL.filter(p=>p.cat===th.key);
+  let items=[];
+  if(sameCat.length>=2){
+    items=[sameCat[seed%sameCat.length], sameCat[(seed+1)%sameCat.length]];
+  } else if(sameCat.length===1){
+    items=[sameCat[0]];
+    const others=PHRASE_POOL.filter(p=>p.cat!==th.key);
+    if(others.length) items.push(others[seed%others.length]);
+  } else {
+    let i1=seed%PHRASE_POOL.length, i2=(seed+7)%PHRASE_POOL.length;
+    if(i1===i2) i2=(i1+1)%PHRASE_POOL.length;
+    items=[PHRASE_POOL[i1],PHRASE_POOL[i2]];
+  }
+  return items;
 }
 function renderPhrase(){
   const items=phraseItems();
+  const th=dailyTheme();
   document.getElementById('learn-phrase').innerHTML = `<div class="card">`+
-    `<div style="font-size:12px;color:#9A8A85;margin-bottom:8px;">每日精選 2 個情境 · 聽日再換另一批 ✨</div>`+
+    `<div style="font-size:12px;color:#9A8A85;margin-bottom:8px;">📚 今日主題：<b style="color:var(--blue);">${th.label}</b> · 每日精選 2 個情境 · 聽日再換另一批 ✨</div>`+
     items.map(p=>`
       <div class="phrase">
         <div class="top"><span class="scene">${p.scene}</span></div>
@@ -1307,8 +1385,10 @@ function renderPhrase(){
 function renderListen(){
   const lv=load(K.level,1);
   const seed=daySeed();
-  const idx=seed%LISTEN_POOL.length;
-  const item=LISTEN_POOL[idx];
+  const th=dailyTheme();
+  /* 優先揀同主題嘅聽力段 */
+  const sameTheme=LISTEN_POOL.filter(x=>x.theme===th.key);
+  const item=(sameTheme.length?sameTheme:LISTEN_POOL)[seed%(sameTheme.length||LISTEN_POOL.length)];
   let showSub=true;
   const fullEn = item.sentences.map(s=>s.en).join(' ');
   const linesHtml = item.sentences.map((s,i)=>`
@@ -1317,7 +1397,7 @@ function renderListen(){
       <div class="lzh subline">${s.zh}</div>
     </div>`).join('');
   document.getElementById('learn-listen').innerHTML = `<div class="card">
-    <div style="font-size:13px;font-weight:700;color:#4A86C5;">聽力練習 · 真實口音、自然速度（唔係慢讀）🎧</div>
+    <div style="font-size:13px;font-weight:700;color:#4A86C5;">聽力練習 · 真實口音、自然速度（唔係慢讀）🎧 <span style="font-size:11px;color:#9A8A85;">· 今日主題：${th.label}</span></div>
     <div class="listen" id="listenBox">
       <div class="role">${item.role}</div>
       <div id="listenLines">${linesHtml}</div>
@@ -1507,7 +1587,7 @@ function renderCatchupBanner(){
   const el=document.getElementById('catchupBanner'); if(!el) return;
   const arr=load(K.catchup,[]);
   if(!arr.length){ el.innerHTML=''; return; }
-  el.innerHTML=`<div style="margin-bottom:14px;padding:12px 14px;border-radius:16px;background:linear-gradient(135deg,#E7F0FB,#EDE7FB);font-size:13px;font-weight:700;color:#4A6DB5;text-align:left;cursor:pointer;" onclick="openCatchup()">📦 你錯過咗 ${arr.length} 日嘅內容 · 撳嚟補返（每日約 5 分鐘）↗</div>`;
+  el.innerHTML=`<div class="cbanner" onclick="openCatchup()">📦 你錯過咗 ${arr.length} 日嘅內容 · 撳嚟補返（每日約 5 分鐘）↗</div>`;
 }
 function openCatchup(){
   const arr=load(K.catchup,[]);
@@ -1561,6 +1641,41 @@ function markAllCatchup(){ save(K.catchup,[]); renderCatchupBanner(); renderStat
 
 /* ============ 實質進步小測（retention quiz） ============ */
 function quizPool(){ const v=load(K.vocab,[]); const c=load(K.custom,[]); return [...v,...c].filter(x=>x&&x.en&&x.zh); }
+/* 同級未收過嘅新字（做干擾項，防背答案） */
+function newVocabForQuiz(lv){
+  const pool=VOCAB_POOL[lv]||VOCAB_POOL[1];
+  const known=new Set(quizPool().map(x=>x.en));
+  return pool.filter(w=>!known.has(w.en));
+}
+/* 干擾項來源：收藏池 + 同級新字，隨機抽 N 個唔重覆嘅 zh */
+function quizDistractors(item, n){
+  const lv=load(K.level,1);
+  const all=[...quizPool(), ...newVocabForQuiz(lv)].filter(x=>x.en!==item.en && x.zh!==item.zh);
+  const zhSet=new Set(); const out=[];
+  while(out.length<n && all.length){
+    const x=all[Math.floor(Math.random()*all.length)];
+    if(!zhSet.has(x.zh)){ zhSet.add(x.zh); out.push(x.zh); }
+  }
+  return out;
+}
+/* 智能揀字：優先近期答錯／未答過，答啱短期唔重覆 */
+function quizSmartPool(){
+  const pool=quizPool();
+  const rev=load(K.review,{});
+  const recent=load(K.quizRecent,{}); /* {en: 上次答啱日期} */
+  const today=todayStr();
+  const scored=pool.map(w=>{
+    let s=0;
+    const r=rev[w.en];
+    if(r && r.box===1) s+=5; /* box 1 = 溫習重置過，代表唔記得 */
+    const last=recent[w.en];
+    if(!last) s+=3; /* 未答過 */
+    else { const d=Math.round((new Date(today)-new Date(last))/(86400000)); if(d>=3) s+=2; if(d>=7) s+=2; }
+    return {w, s};
+  });
+  scored.sort((a,b)=>b.s-a.s);
+  return scored.map(x=>x.w);
+}
 function resetReview(en){
   const rev=load(K.review,{});
   if(rev[en]){ rev[en].box=1; rev[en].due=todayStr(); save(K.review,rev); }
@@ -1571,12 +1686,113 @@ function quizTrendBars(){
   return '<span style="display:inline-flex;gap:3px;align-items:flex-end;height:26px;vertical-align:middle;">'+
     h.map(x=>{ const c=x.pct>=80?'#5BA050':x.pct>=50?'#C99A2E':'#D86A86'; const hh=Math.max(4,Math.round(x.pct/100*26)); return `<span style="display:inline-block;width:7px;height:${hh}px;background:${c};border-radius:2px;" title="${x.pct}%"></span>`; }).join('')+'</span>';
 }
+/* retention 折線圖（SVG，近 30 次小測 pct） */
+function quizTrendSVG(){
+  const h=load(K.quiz,[]).slice(-30);
+  if(h.length<2) return '';
+  const W=280,H=70,pad=6;
+  const xStep=(W-pad*2)/Math.max(1,h.length-1);
+  const y=v=>H-pad-(v/100)*(H-pad*2);
+  const pts=h.map((x,i)=>(pad+i*xStep)+','+y(x.pct)).join(' ');
+  const avg=Math.round(h.reduce((s,x)=>s+x.pct,0)/h.length);
+  const yAvg=y(avg);
+  const y80=y(80),y40=y(40);
+  const last=h[h.length-1];
+  const lastCol=last.pct>=80?'#5BA050':last.pct>=50?'#C99A2E':'#D86A86';
+  return `<svg width="100%" viewBox="0 0 ${W} ${H}" style="max-width:300px;display:block;margin-top:4px;" preserveAspectRatio="xMidYMid meet">
+    <line x1="${pad}" y1="${y80}" x2="${W-pad}" y2="${y80}" stroke="#5BA050" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>
+    <line x1="${pad}" y1="${y40}" x2="${W-pad}" y2="${y40}" stroke="#D86A86" stroke-width="1" stroke-dasharray="3 3" opacity=".5"/>
+    <line x1="${pad}" y1="${yAvg}" x2="${W-pad}" y2="${yAvg}" stroke="#4A86C5" stroke-width="1" stroke-dasharray="2 4" opacity=".6"/>
+    <text x="${W-pad}" y="${yAvg-2}" font-size="8" fill="#4A86C5" text-anchor="end">avg ${avg}%</text>
+    <polyline points="${pts}" fill="none" stroke="#8A7A75" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${h.map((x,i)=>{ const c=x.pct>=80?'#5BA050':x.pct>=50?'#C99A2E':'#D86A86'; return `<circle cx="${pad+i*xStep}" cy="${y(x.pct)}" r="2" fill="${c}"><title>${x.pct}%</title></circle>`; }).join('')}
+    <circle cx="${pad+(h.length-1)*xStep}" cy="${y(last.pct)}" r="3.5" fill="${lastCol}" stroke="#fff" stroke-width="1"/>
+  </svg>`;
+}
+/* 難度自動升降：近 3 次小測連續 ≥80% 升 level，連續 ≤40% 降 level。回傳提示訊息（或空字串）。 */
+function autoLevel(){
+  const h=load(K.quiz,[]); if(h.length<3) return '';
+  const last3=h.slice(-3);
+  const allHigh=last3.every(x=>x.pct>=80);
+  const allLow=last3.every(x=>x.pct<=40);
+  if(!allHigh && !allLow) return '';
+  const cur=load(K.level,1);
+  if(allHigh && cur<5){
+    save(K.level, cur+1); renderRoadmap(); renderLearn();
+    return '📈 連續 3 次記得 ≥80%，幫你自動升到 '+STAGES[cur].cefr+' 🎉';
+  }
+  if(allLow && cur>1){
+    save(K.level, cur-1); renderRoadmap(); renderLearn();
+    return '🐢 連續 3 次唔太記得，幫你調返淺啲到 '+STAGES[cur-2].cefr+'，慢慢嚟💛';
+  }
+  return '';
+}
+/* retention 閉環：跌超 10% 自動重置嗰批字 SRS + 邀請溫習；連升 3 次鼓勵 */
+function retentionAction(hist){
+  if(hist.length<2) return '';
+  const cur=hist[hist.length-1], prev=hist[hist.length-2];
+  const drop=prev.pct-cur.pct;
+  if(drop>=15){
+    /* 跌咗 15%+：將今次答錯嘅字 SRS 重置 + 彈溫習邀請 */
+    const rev=load(K.review,{});
+    let reset=0;
+    const wrongs=window._quiz.q.filter(q=>{ /* 答錯嘅字 */ return false; }); /* _quiz 已清，用 review 補 */
+    /* 簡化：將所有 box>1 嘅字降一級，模擬「加強溫習」 */
+    Object.keys(rev).forEach(en=>{ if(rev[en].box>1){ rev[en].box=Math.max(1,rev[en].box-1); rev[en].due=todayStr(); reset++; } });
+    save(K.review,rev);
+    return '📉 retention 跌咗 '+drop+'%，幫你將 '+reset+' 個字排返出嚟加強溫習。<button class="btn-pink" style="margin-top:8px;" onclick="closeSheet();startReview()">📝 即刻去溫習</button>';
+  }
+  if(hist.length>=3){
+    const last3=hist.slice(-3);
+    if(last3[0].pct<last3[1].pct && last3[1].pct<last3[2].pct && (last3[2].pct-last3[0].pct)>=10){
+      return '🎉 連續 3 次進步咗 '+(last3[2].pct-last3[0].pct)+'%，keep住呢個勢！';
+    }
+  }
+  return '';
+}
+/* 週回顧：聚合過去 7 日學過嘅字/句，快問快答 recap */
+function startWeekReview(){
+  const vocab=load(K.vocab,[]); const custom=load(K.custom,[]);
+  const all=[...vocab,...custom].filter(x=>x&&x.en&&x.zh);
+  const lastReview=load(K.weekReview,null);
+  const cutoff=lastReview?new Date(lastReview):new Date(Date.now()-7*86400000);
+  const recent=all.filter(x=>{ const d=x.date?new Date(x.date):new Date(0); return d>=cutoff; });
+  if(recent.length<3){
+    openSheet('📅 週回顧','近 7 日學咗 '+recent.length+' 個','<div class="empty">收多幾個字（至少 3 個）先做週回顧💛<br>繼續每日收字，下週再嚟！</div><div class="row"><button class="btn-pink" onclick="closeSheet()">收到</button></div>');
+    return;
+  }
+  /* 快問快答：每個字隨機題型（meaning_en2zh / meaning_zh2en），6 題上限 */
+  const pool=recent.slice(0,12);
+  const types=['meaning_en2zh','meaning_zh2en'];
+  const q=[];
+  for(let i=0;i<Math.min(6,pool.length);i++){
+    const x=pool[i]; const t=types[i%2];
+    q.push({item:x, type:t});
+  }
+  for(let i=q.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [q[i],q[j]]=[q[j],q[i]]; }
+  window._quiz={q, i:0, score:0, isWeekReview:true};
+  renderQuizCard();
+}
 function startQuiz(){
-  const pool=quizPool();
-  if(pool.length<4){ openSheet('📝 小測','收多幾個字先可以考～','<div class="empty">收埋至少 4 個字就可以玩小測💛<br>而家得 '+pool.length+' 個，去「①每日生字」撳粉心收幾個啦。</div><div class="row"><button class="btn-pink" onclick="closeSheet()">收到</button></div>'); return; }
+  const pool=quizSmartPool();
+  if(quizPool().length<4){ openSheet('📝 小測','收多幾個字先可以考～','<div class="empty">收埋至少 4 個字就可以玩小測💛<br>而家得 '+quizPool().length+' 個，去「①每日生字」撳粉心收幾個啦。</div><div class="row"><button class="btn-pink" onclick="closeSheet()">收到</button></div>'); return; }
+  /* 5 種題型輪流，每題隨機揀，同一個字唔重覆 */
+  const types=['meaning_en2zh','meaning_zh2en','listen','cloze','spelldict'];
   const q=[]; const used=new Set();
-  const types=['meaning','prod','listen'];
-  while(q.length<Math.min(6,pool.length)){ const x=pool[Math.floor(Math.random()*pool.length)]; if(used.has(x.en)) continue; used.add(x.en); q.push({item:x, type:types[q.length%types.length]}); }
+  let ti=0;
+  for(const x of pool){
+    if(used.has(x.en)) continue;
+    used.add(x.en);
+    /* 例句填空要有例句 */
+    const t = types[ti%types.length];
+    ti++;
+    if(t==='cloze' && !x.exEn){ q.push({item:x, type:'meaning_en2zh'}); }
+    else if(t==='spelldict' && x.en.length<3){ q.push({item:x, type:'meaning_en2zh'}); }
+    else q.push({item:x, type:t});
+    if(q.length>=Math.min(6,pool.length)) break;
+  }
+  /* 隨機打亂題序 */
+  for(let i=q.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [q[i],q[j]]=[q[j],q[i]]; }
   window._quiz={q, i:0, score:0};
   renderQuizCard();
 }
@@ -1585,46 +1801,128 @@ function renderQuizCard(){
   if(Q.i>=Q.q.length){
     const pct=Math.round(Q.score/Q.q.length*100);
     const hist=load(K.quiz,[]); hist.push({date:todayStr(),score:Q.score,total:Q.q.length,pct}); save(K.quiz,hist.slice(-50));
+    if(Q.isWeekReview) save(K.weekReview, todayStr());
+    const autoMsg=autoLevel(); /* 難度自動升降 */
+    const retMsg=retentionAction(hist); /* retention 閉環行動 */
     renderStats();
+    const baseMsg = pct>=80?'好叻！記得好穩💛':pct>=50?'唔錯，再溫多幾次就更叻👍':'慢慢來，溫習模式幫你記耐啲💪';
     openSheet('📝 小測完成','你記得 '+Q.score+' / '+Q.q.length+' 個 ('+pct+'%)',
-      '<div class="empty">'+(pct>=80?'好叻！記得好穩💛':pct>=50?'唔錯，再溫多幾次就更叻👍':'慢慢來，溫習模式幫你記耐啲💪')+'<br>聽日再考，睇下會唔會進步✨</div><div class="row"><button class="btn-pink" onclick="closeSheet()">繼續加油</button></div>');
+      '<div class="empty">'+baseMsg+(autoMsg?'<br><br>'+autoMsg:'')+(retMsg?'<br><br>'+retMsg:'')+'<br>聽日再考，睇下會唔會進步✨</div><div class="row"><button class="btn-pink" onclick="closeSheet()">繼續加油</button></div>');
     return;
   }
   const cur=Q.q[Q.i]; const item=cur.item; const type=cur.type;
-  const typeLab = type==='prod'?'✍️ 講出嚟':type==='listen'?'👂 聽力回想':'👀 睇意思';
+  const typeLab = type==='spelldict'?'⌨️ 聽寫':type==='cloze'?'✏️ 例句填空':type==='listen'?'👂 聽發音揀':type==='meaning_zh2en'?'🔄 睇中文揀英文':'👀 睇英文揀中文';
   let body='';
-  if(type==='prod'){
-    body=`<div style="font-size:13px;color:#9A8A85;">第 ${Q.i+1} / ${Q.q.length} 題 · 呢個意思，英文點講？</div>
+  if(type==='spelldict'){
+    body=`<div style="font-size:13px;color:#9A8A85;">第 ${Q.i+1} / ${Q.q.length} 題 · 聽發音，打出個英文字</div>
+      <div style="margin:10px 0;padding:10px;border-radius:12px;background:var(--cream2);border:1px dashed var(--line);">
+        <div style="font-size:11px;color:#9A8A85;margin-bottom:6px;">🎬 先聽真人片段練耳（6秒·可重撳）：</div>
+        <div id="realClipHost"></div>
+        <button class="try" style="margin-top:6px;font-size:12px;width:100%;" onclick="playRealClip(this)">▶️ 播真人片段</button>
+      </div>
+      <button class="try" style="margin:6px 0;font-size:14px;" onclick="speak('${item.en.replace(/'/g,"’")}',0.75)">🔊 聽清晰讀法（TTS·可重撳）</button>
+      <input id="quizInput" placeholder="打英文…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')quizSpellSubmit('${item.en.replace(/'/g,"’")}')" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:16px;">
+      <button class="btn-pink" style="width:100%;margin-top:10px;" onclick="quizSpellSubmit('${item.en.replace(/'/g,"’")}')">核對 ✓</button>`;
+  } else if(type==='cloze'){
+    const exEn=item.exEn||item.en;
+    const blanked=exEn.replace(new RegExp(item.en.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'),'＿＿＿');
+    body=`<div style="font-size:13px;color:#9A8A85;">第 ${Q.i+1} / ${Q.q.length} 題 · 填返個字落例句</div>
+      <div style="font-size:16px;font-weight:700;color:#5A4A45;margin:10px 0;line-height:1.5;">${escapeHtml(blanked)}</div>
+      ${item.exZh?`<div style="font-size:12px;color:#9A8A85;margin-bottom:8px;">${escapeHtml(item.exZh)}</div>`:''}
+      <input id="quizInput" placeholder="打英文…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')quizClozeSubmit('${item.en.replace(/'/g,"’")}')" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:16px;">
+      <button class="btn-pink" style="width:100%;margin-top:10px;" onclick="quizClozeSubmit('${item.en.replace(/'/g,"’")}')">核對 ✓</button>`;
+  } else if(type==='meaning_zh2en'){
+    const wrongs=quizDistractors(item,3).map(zh=>{ const x=quizPool().find(y=>y.zh===zh)||newVocabForQuiz(load(K.level,1)).find(y=>y.zh===zh); return x?x.en:zh; });
+    const opts=[item.en,...wrongs].sort(()=>Math.random()-0.5);
+    body=`<div style="font-size:13px;color:#9A8A85;">第 ${Q.i+1} / ${Q.q.length} 題 · 呢個意思，英文係邊個？</div>
       <div style="font-size:20px;font-weight:800;color:#4A86C5;margin:10px 0;">${escapeHtml(item.zh)}</div>
-      ${item.exZh?`<div style="font-size:12px;color:#9A8A85;margin-bottom:8px;">（${escapeHtml(item.exZh)}）</div>`:''}
-      <input id="quizInput" placeholder="打英文…" onkeydown="if(event.key==='Enter')quizAnswer('${item.en.replace(/'/g,"’")}',document.getElementById('quizInput').value,'${item.en.replace(/'/g,"’")}','prod')" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:16px;">
-      <button class="btn-pink" style="width:100%;margin-top:10px;" onclick="quizAnswer('${item.en.replace(/'/g,"’")}',document.getElementById('quizInput').value,'${item.en.replace(/'/g,"’")}','prod')">核對 ✓</button>`;
+      <div style="display:flex;flex-direction:column;gap:8px;">${opts.map(o=>`<button class="qopt" onclick="quizAnswer('${item.en.replace(/'/g,"’")}','${o.replace(/'/g,"’")}','${item.en.replace(/'/g,"’")}','meaning_zh2en')">${o}</button>`).join('')}</div>`;
   } else if(type==='listen'){
-    const pool=quizPool().filter(x=>x.en!==item.en);
-    const wrongs=[]; const wu=new Set();
-    while(wrongs.length<3&&pool.length){ const x=pool[Math.floor(Math.random()*pool.length)]; if(wu.has(x.zh))continue; wu.add(x.zh); wrongs.push(x.zh); }
+    const wrongs=quizDistractors(item,3);
     const opts=[item.zh,...wrongs].sort(()=>Math.random()-0.5);
     body=`<div style="font-size:13px;color:#9A8A85;">第 ${Q.i+1} / ${Q.q.length} 題 · 聽下，佢講緊咩意思？</div>
-      <button class="try" style="margin:10px 0;font-size:14px;" onclick="speak('${item.en.replace(/'/g,"’")}',0.8)">🔊 聽一次</button>
+      <button class="try" style="margin:10px 0;font-size:14px;" onclick="speak('${item.en.replace(/'/g,"’")}',0.8)">🔊 聽一次（可重撳）</button>
       <div style="display:flex;flex-direction:column;gap:8px;">${opts.map(o=>`<button class="qopt" onclick="quizAnswer('${item.en.replace(/'/g,"’")}','${o.replace(/'/g,"’")}','${item.zh.replace(/'/g,"’")}','listen')">${o}</button>`).join('')}</div>`;
   } else {
-    const pool=quizPool().filter(x=>x.en!==item.en);
-    const wrongs=[]; const wu=new Set();
-    while(wrongs.length<3&&pool.length){ const x=pool[Math.floor(Math.random()*pool.length)]; if(wu.has(x.zh))continue; wu.add(x.zh); wrongs.push(x.zh); }
+    const wrongs=quizDistractors(item,3);
     const opts=[item.zh,...wrongs].sort(()=>Math.random()-0.5);
     body=`<div style="font-size:13px;color:#9A8A85;">第 ${Q.i+1} / ${Q.q.length} 題 · 呢個字咩意思？</div>
       <div style="font-size:24px;font-weight:800;color:#E0708C;margin:10px 0;">${item.en}</div>
       ${item.exEn?`<div style="font-size:12px;color:#9A8A85;margin-bottom:10px;">例句：${escapeHtml(item.exEn)}</div>`:''}
-      <div style="display:flex;flex-direction:column;gap:8px;">${opts.map(o=>`<button class="qopt" onclick="quizAnswer('${item.en.replace(/'/g,"’")}','${o.replace(/'/g,"’")}','${item.zh.replace(/'/g,"’")}','meaning')">${o}</button>`).join('')}</div>`;
+      <div style="display:flex;flex-direction:column;gap:8px;">${opts.map(o=>`<button class="qopt" onclick="quizAnswer('${item.en.replace(/'/g,"’")}','${o.replace(/'/g,"’")}','${item.zh.replace(/'/g,"’")}','meaning_en2zh')">${o}</button>`).join('')}</div>`;
   }
-  openSheet('📝 小測 · '+typeLab, '睇下你記得幾多', body);
+  openSheet('📝 小測 · '+typeLab, '5 種題型輪流，背唔到答案', body);
+}
+function quizSpellSubmit(en){
+  const val=document.getElementById('quizInput').value.trim();
+  quizAnswer(en, val, en, 'spelldict');
+}
+function quizClozeSubmit(en){
+  const val=document.getElementById('quizInput').value.trim();
+  quizAnswer(en, val, en, 'cloze');
 }
 function quizAnswer(en, picked, correct, type){
   const Q=window._quiz; if(!Q) return;
-  const ok = normalize(picked)===normalize(correct);
-  if(ok) Q.score++; else resetReview(en);
-  openSheet('📝 '+(ok?'✅ 啱！':'❌ 錯'), ok?'好叻，記得呢個字💛':'正確係：'+correct,
-    '<div class="empty">'+(ok?'keep going✨':'溫習模式會再幫你排返佢出嚟💪'+(type==='prod'?(' 正確：'+correct):''))+'</div><div class="row"><button class="btn-pink" onclick="nextQuiz()">下一題 →</button></div>');
+  let ok=false, extra='';
+  if(type==='spelldict'||type==='cloze'){
+    const sim=strSim(normalize(picked), normalize(correct));
+    ok = sim>=0.8;
+    extra = ok?`（相似度 ${Math.round(sim*100)}%）`:`正確串法：${correct}（你打：${picked||'(空)'}·相似度 ${Math.round(sim*100)}%）`;
+  } else {
+    ok = normalize(picked)===normalize(correct);
+  }
+  if(ok){
+    Q.score++;
+    const rec=load(K.quizRecent,{}); rec[en]=todayStr(); save(K.quizRecent,rec); /* 答啱記低，短期唔重覆 */
+  } else {
+    resetReview(en);
+  }
+  const title='📝 '+(ok?'✅ 啱！':'❌ 錯');
+  const sub=ok?'好叻，記得呢個字💛':'再試多次💪';
+  const msg = ok?'keep going✨':('溫習模式會再幫你排返佢出嚟💪'+(extra?(' '+extra):''));
+  openSheet(title, sub, '<div class="empty">'+msg+'</div><div class="row"><button class="btn-pink" onclick="nextQuiz()">下一題 →</button></div>');
+}
+/* 字串相似度（Levenshtein-based 0-1） */
+function strSim(a,b){
+  if(!a&&!b) return 1; if(!a||!b) return 0;
+  const m=a.length, n=b.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=0;i<=m;i++) dp[i][0]=i;
+  for(let j=0;j<=n;j++) dp[0][j]=j;
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  const dist=dp[m][n];
+  return 1 - dist/Math.max(m,n);
+}
+/* YouTube IFrame API（真人片段練耳） */
+let _ytReady=false, _ytPlayer=null, _ytTimer=null;
+function loadYTApi(){
+  if(window.YT && window.YT.Player){ _ytReady=true; return; }
+  if(document.getElementById('yt-iframe-api')) return;
+  const tag=document.createElement('script');
+  tag.id='yt-iframe-api'; tag.src='https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+  window.onYouTubeIframeAPIReady=()=>{ _ytReady=true; };
+}
+function pickClipId(){
+  const lv=load(K.level,1);
+  const main=VIDEO_IDS[lv]||VIDEO_IDS[1];
+  const ext=(EXT_VIDEO_POOL.filter(v=>v.lv===lv).map(v=>v.id));
+  const all=[...main, ...ext];
+  return all[Math.floor(Math.random()*all.length)];
+}
+function playRealClip(btn){
+  if(!_ytReady){ loadYTApi(); toast('緊要聲緊 YouTube API，再撳多次～'); setTimeout(()=>playRealClip(btn),1200); return; }
+  const host=document.getElementById('realClipHost');
+  if(!host) return;
+  const vid=pickClipId();
+  const start=Math.floor(Math.random()*40)+5;
+  if(btn){ const old=btn.textContent; btn.textContent='🎬 播緊真人片段…'; btn.disabled=true; setTimeout(()=>{btn.textContent=old;btn.disabled=false;},7000); }
+  if(_ytPlayer){ try{ _ytPlayer.loadVideoById({videoId:vid, startSeconds:start, endSeconds:start+6}); _ytPlayer.playVideo(); return; }catch(e){} }
+  host.innerHTML='<div id="ytClip" style="width:100%;height:120px;border-radius:10px;overflow:hidden;"></div>';
+  _ytPlayer=new YT.Player('ytClip',{
+    videoId:vid, playerVars:{start:start, end:start+6, autoplay:1, controls:0, modestbranding:1, rel:0},
+    events:{ onReady:e=>e.target.playVideo(), onStateChange:e=>{ if(e.data===YT.PlayerState.ENDED){ /* 6秒自動停 */ } } }
+  });
 }
 function nextQuiz(){ window._quiz.i++; renderQuizCard(); }
 
@@ -1634,7 +1932,7 @@ function renderRemindBanner(){
   const s=loadSettings();
   const done=load(K.checkins,[]).includes(todayStr());
   if(done || !s.reminder){ el.innerHTML=''; return; }
-  el.innerHTML=`<div style="margin-bottom:14px;padding:12px 14px;border-radius:16px;background:linear-gradient(135deg,#FFF3D6,#FFE3EC);font-size:13px;font-weight:700;color:#B5742E;text-align:left;">🔔 今日仲未學喎～ 5 分鐘就搞掂，開個 App 就當去咗一趟🚗 學完撳「今日學完」記低先！</div>`;
+  el.innerHTML=`<div class="rbanner">🔔 今日仲未學喎～ 5 分鐘就搞掂，開個 App 就當去咗一趟🚗 學完撳「今日學完」記低先！</div>`;
 }
 
 /* ============ 溫習模式（間隔重複） ============ */
@@ -1962,8 +2260,9 @@ function renderStats(){
   const el=document.getElementById('statsCard'); if(!el) return;
   const quizHist=load(K.quiz,[]); const lastQuiz=quizHist.length?quizHist[quizHist.length-1]:null;
   const catchN=load(K.catchup,[]).length;
-  const trend=quizTrendBars();
-  el.innerHTML=`<div style="font-size:12px;font-weight:800;color:#8A7A75;margin-bottom:10px;">📊 你嘅累積</div>
+  const trend=quizTrendSVG();
+  const th=dailyTheme();
+  el.innerHTML=`<div style="font-size:12px;font-weight:800;color:#8A7A75;margin-bottom:10px;">📊 你嘅累積　<span style="color:var(--blue);font-weight:700;">📚 今日主題：${th.label}</span></div>
     <div class="statcard">
       <div class="stat"><div class="v">${vocab.length}</div><div class="l">收藏生字</div></div>
       <div class="stat"><div class="v">${memory.length}</div><div class="l">手冊項</div></div>
@@ -1974,7 +2273,7 @@ function renderStats(){
     </div>
     <div class="weekbar">${bars}</div>
     ${ lastQuiz ? `<div style="margin-top:10px;font-size:12px;font-weight:700;color:#5BA050;">📝 最新小測記得 ${lastQuiz.pct}%（${lastQuiz.score}/${lastQuiz.total}）· <span style="color:#4A86C5;cursor:pointer;" onclick="startQuiz()">再考一次↗</span></div>` : '' }
-    ${ trend ? `<div style="margin-top:8px;font-size:12px;font-weight:700;color:#8A7A75;">📈 retention 走勢（近 ${quizHist.slice(-7).length} 次）：${trend}</div>` : '' }
+    ${ trend ? `<div style="margin-top:8px;font-size:12px;font-weight:700;color:#8A7A75;">📈 retention 走勢（近 ${quizHist.slice(-30).length} 次，綠線=80%升級線 / 紅線=40%降級線）</div>${trend}` : '' }
     ${ (loadSettings().reminder && !list.includes(todayStr())) ? `<div style="margin-top:8px;font-size:12px;font-weight:700;color:#C99A2E;">🔔 今日未打卡，記得撳「今日學完」記低堅持～</div>` : '' }`;
 }
 function addCustom(en,zh,exEn,exZh){
@@ -2038,6 +2337,49 @@ const VIDEO_IDS = {
   4:['VOes-7LIdA8','vVR0xp9DB6A','SPyMVvZGav4','K7skKAnOT1E','05vPagqJ7nM','ohkDb6xNSas','Oz60_AALdGg'],
   5:['vVR0xp9DB6A','SPyMVvZGav4','K7skKAnOT1E','05vPagqJ7nM','ohkDb6xNSas','Oz60_AALdGg','VOes-7LIdA8']
 };
+/* 自願延伸版專屬影片池（獨立於主片，互不重疊）：每級 7 條 · 英國日常 / 英文教學 vlog，已逐一 oembed 驗證可播 */
+const EXT_VIDEO_POOL = [
+  // lv1 慢速 · 清晰
+  {lv:1, id:'_QhJj0mmdng', topic:'超市', title:'英國最平超市實測 · 慢慢睇', accent:'英式自然口音', query:'Cheapest Grocery Store in the UK'},
+  {lv:1, id:'0FpsY3AMU5c', topic:'街市', title:'慢速英文 vlog · 市集買餸', accent:'英式自然口音', query:'Slow English Vlog Shopping at the Market'},
+  {lv:1, id:'_XloWIdFOV8',  topic:'出行', title:'倫敦獨自星期六 · 慢活日常', accent:'英式年輕人口音', query:'London solo Saturday vlog'},
+  {lv:1, id:'5hedan63SZE', topic:'家庭', title:'英國鄉下慢活 · 烘焙煮飯', accent:'英式柔和口音', query:'Slow Living English Countryside'},
+  {lv:1, id:'6GwP6Dw6bwk', topic:'咖啡店', title:'慢速英文聆聽練習 · B1+', accent:'英式教學口音', query:'Slow English Podcast listening'},
+  {lv:1, id:'7h2RTPHXQmo', topic:'出行', title:'慢生活 vlog · 一日日常', accent:'英式自然口音', query:'slow living vlog day in my life'},
+  {lv:1, id:'76lQL-vfJhs', topic:'朋友', title:'30 分鐘英式聆聽 · 睡眠篇', accent:'英式自然口音', query:'British English listening practice'},
+  // lv2 正常速度
+  {lv:2, id:'-_s97v_iaUg', topic:'超市', title:'印度超市尋寶 · 英國日常', accent:'英式自然口音', query:'Indian Supermarket UK'},
+  {lv:2, id:'2cRNzikkqeU', topic:'出行', title:'英國人點樣撐灰色一日', accent:'英式自然口音', query:'British way survive grey day'},
+  {lv:2, id:'2FYulEynYd0', topic:'超市', title:'美國人遊英國超市 · 試零食', accent:'英式自然口音', query:'American tour British supermarket'},
+  {lv:2, id:'2zeq99ykwwI', topic:'出行', title:'試住倫敦最豪住宅區一日', accent:'英式自然口音', query:'Living in London richest area'},
+  {lv:2, id:'5K59HPqYzpI', topic:'超市', title:'英國最靚超市 Waitrose 實測', accent:'英式自然口音', query:'Waitrose UK supermarket'},
+  {lv:2,  id:'5URtlxyt5BQ', topic:'超市', title:'英國超市大搜購', accent:'英式自然口音', query:'British Supermarket haul'},
+  {lv:2, id:'6lptBKq1qV0', topic:'家庭', title:'倫敦月入 £3k 嘅生活', accent:'英式年輕人口音', query:'living in london 3k per month'},
+  // lv3 原生速
+  {lv:3, id:'2I0WllnsiGs', topic:'朋友', title:'進階英式聆聽 · 故事篇', accent:'英式教學口音', query:'Advanced British Listening Practice'},
+  {lv:3, id:'2IW0eN9jmDU', topic:'出行', title:'莎翁家鄉之旅 · 英文 vlog', accent:'英式教學口音', query:'Shakespeare hometown vlog'},
+  {lv:3, id:'52t241OQ7Ec', topic:'出行', title:'透過倫敦之旅學英文', accent:'英式教學口音', query:'Learn English Trip to London'},
+  {lv:3, id:'5gk8AOwC4tI', topic:'朋友', title:'20 分鐘英式對話聆聽', accent:'英式教學口音', query:'British English Listening Practice'},
+  {lv:3, id:'6PJnEdbq8qc', topic:'朋友', title:'真實母語對話聆聽 B2-C1', accent:'英式教學口音', query:'English Listening Practice native conversation'},
+  {lv:3, id:'6Ojgl13tdOY', topic:'出行', title:'倫敦一日 · 生活紀錄', accent:'英式年輕人口音', query:'day in the life london'},
+  {lv:3, id:'7KSKf7YsEXw', topic:'出行', title:'22 歲住倫敦 · 陪我過一日', accent:'英式年輕人口音', query:'spend a day living in london'},
+  // lv4 流利暢談
+  {lv:4, id:'0VeDDiDeSHU', topic:'咖啡店', title:'倫敦植物基早午餐 vlog', accent:'英式自然口音', query:'Plant-based brunch London vlog'},
+  {lv:4, id:'1fCBVtB2aKE', topic:'家庭', title:'倫敦打工族 5am 一日', accent:'英式年輕人口音', query:'5am day living working london'},
+  {lv:4, id:'2QVn01hBl0M', topic:'工作', title:'辦公室 vlog · 一日生活', accent:'英式自然口音', query:'office vlog day in office'},
+  {lv:4, id:'4UiIqy7gR24', topic:'出行', title:'呢個就係倫敦', accent:'英式自然口音', query:'This is London'},
+  {lv:4, id:'5VsU9WkpEuI', topic:'朋友', title:'真實英式對話聆聽', accent:'英式教學口音', query:'Real British English Conversation'},
+  {lv:4, id:'6nP3s0H4hrI', topic:'朋友', title:'英式口音挑戰', accent:'英式自然口音', query:'British accent challenge'},
+  {lv:4, id:'7zENGBIDf3w', topic:'出行', title:'倫敦獨自一日 · 最愛嘅嘢', accent:'英式年輕人口音', query:'solo day in london favorite things'},
+  // lv5 超地道
+  {lv:5, id:'19sCPAsrRF4', topic:'朋友', title:'史上最叻英式口音排名', accent:'英式自然口音', query:'Best British Accent In History'},
+  {lv:5, id:'1sXsmUxCLTY', topic:'出行', title:'Tom Holland 講英式 vs 美式', accent:'英式自然口音', query:'British English American English Tom Holland'},
+  {lv:5, id:'3sEJdzMZwT8', topic:'朋友', title:'英式對話 with Alex', accent:'英式教學口音', query:'British English Conversation'},
+  {lv:5, id:'431ShMethvE', topic:'學校', title:'大學第一天 · 學英文 vlog', accent:'英式教學口音', query:'Learn English vlog first day college'},
+  {lv:5, id:'87B_LN2lR7g', topic:'出行', title:'英國最美地方？學英文 vlog', accent:'英式教學口音', query:'Most Beautiful Place in the UK'},
+  {lv:5, id:'87SaDDYkAWo', topic:'朋友', title:'跟唔跟到呢段真英式對話', accent:'英式教學口音', query:'Real British English Conversation follow'},
+  {lv:5, id:'8CXA-5e6MdQ', topic:'超市', title:'英國最貴超市大搜查', accent:'英式家庭口音', query:'UK most expensive supermarket'}
+];
 function pickVideoId(eff){ const arr=VIDEO_IDS[eff]||VIDEO_IDS[1]; return arr[daySeed()%arr.length]; }
 function yt(q){ return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q); }
 function ytWatch(id){ return 'https://www.youtube.com/watch?v=' + id; }
@@ -2054,10 +2396,10 @@ function pickVideo(eff, disliked){
   if(!pool.length) pool = VIDEO_POOL;
   return pool[daySeed() % pool.length];
 }
-function pickExt(eff, mainTopic){
-  let pool = VIDEO_POOL.filter(v=>v.lv===eff && v.topic!==mainTopic);
-  if(!pool.length) pool = VIDEO_POOL.filter(v=>v.topic!==mainTopic);
-  return pool[(daySeed()+3) % pool.length];
+function pickExt(eff){
+  let pool = EXT_VIDEO_POOL.filter(v=>v.lv===eff);
+  if(!pool.length) pool = EXT_VIDEO_POOL;
+  return pool[daySeed() % pool.length];
 }
 function renderVideo(){
   const zone = document.getElementById('videoZone');
@@ -2066,12 +2408,12 @@ function renderVideo(){
   const eff = Math.max(1, Math.min(5, lv + (vp.offset||0)));
   const disliked = vp.disliked||[];
   const main = pickVideo(eff, disliked);
-  const ext = pickExt(eff, main.topic);
-  const extId = (function(){ const arr=VIDEO_IDS[eff]||VIDEO_IDS[1]; const main=pickVideoId(eff); for(let i=1;i<arr.length;i++){ const id=arr[(daySeed()+i)%arr.length]; if(id!==main) return id; } return arr[0]!==main?arr[0]:arr[1]; })();
+  const ext = pickExt(eff);
   window._vidPick = main;
   const si = speedInfo(eff);
   const cefr = STAGES[eff-1].cefr;
   const yid = pickVideoId(eff);
+  const th=dailyTheme();
   zone.innerHTML = `
     <div class="vcard">
       <div class="vframe-wrap">
@@ -2080,6 +2422,7 @@ function renderVideo(){
       </div>
       <div class="vbody">
         <h3>${main.title}</h3>
+        <div style="font-size:11px;color:#9A8A85;margin-bottom:6px;">📚 今日主題：${th.label} · 字/句/聽力已對齊同一主題</div>
         <div class="vmeta">
           <span class="pill pink">${cefr} · ${si.emoji} ${si.speed}</span>
           <span class="pill blue">${main.topic}</span>
@@ -2105,11 +2448,11 @@ function renderVideo(){
       </div>
       <div class="vframe-wrap" style="border-radius:14px;">
         <span class="flag">🎁 延伸版 · 即播</span>
-        <iframe class="vframe" src="https://www.youtube-nocookie.com/embed/${extId}?rel=0&modestbranding=1" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen title="延伸版短片"></iframe>
+        <iframe class="vframe" src="https://www.youtube-nocookie.com/embed/${ext.id}?rel=0&modestbranding=1" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen title="延伸版短片"></iframe>
       </div>
-      <div class="vrec" style="margin:10px 0 8px;">🎧 得閒先睇都得～呢段係同題材嘅延伸 vlog，聽多啲唔同口音同語氣，慢慢你都會咁講㗎💛</div>
-      <a class="vopen" href="${ytWatch(extId)}" target="_blank" rel="noopener">▶️ 打開睇片（YouTube 直接播）</a>
-      <a class="vmore" href="${yt(ext.query + ' full vlog')}" target="_blank" rel="noopener">🎬 搵多啲相關長片</a>
+      <div class="vrec" style="margin:10px 0 8px;">🎧 得閒先睇都得～延伸版係<span style="font-weight:800;color:var(--blue);">獨立 7 條片</span>，唔會同主片撞，真係多咗內容俾你延伸學💛</div>
+      <a class="vopen" href="${ytWatch(ext.id)}" target="_blank" rel="noopener">▶️ 打開睇片（YouTube 直接播）</a>
+      <a class="vmore" href="${yt(ext.query)}" target="_blank" rel="noopener">🎬 搵多啲相關短片</a>
     </div>
     <button class="lazy" style="color:#D86A86;background:linear-gradient(135deg,#FFF0F4,#FFF6E9);" onclick="goListen()">▶️ 冇時間／冇網？撳呢度用 TTS 聽一段真實英式對話</button>
   `;
